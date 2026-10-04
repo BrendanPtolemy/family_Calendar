@@ -30,7 +30,13 @@ if (process.env.NODE_ENV === 'production' && existsSync(dist)) {
   app.get(/^(?!\/api\/).*/, (_req, res) => res.sendFile(resolve(dist, 'index.html')));
 }
 
-app.listen(port, () => {
+// Express 5 calls this callback with the error when listening fails (e.g. the
+// port is taken), so check it rather than announce a server that isn't there.
+app.listen(port, (err?: Error) => {
+  if (err) {
+    console.error(`Could not listen on port ${port}: ${err.message}`);
+    process.exit(1);
+  }
   console.log(`Family Skylight API on http://localhost:${port}`);
   if (store.data.devices.length === 0) console.log('No devices paired yet. Run `npm run pair` on this machine to get a code.');
   const feedUrls = store.data.members.flatMap((m) => m.calendarFeeds);
