@@ -1,8 +1,9 @@
 // The contract between the family display and a budget / grocery / meal-plan
-// backend. To connect a different app, implement this interface and register
+// backend. Only allowance and savings goals cross over from the budget side;
+// budget categories and spending never do. To connect a different app, implement this interface and register
 // it in ./index.ts. Nothing else in the codebase knows which provider is used.
 
-import type { BudgetSummary, GroceryItem, IntegrationInfo, Meal, MealSlot } from '../../../shared/types.js';
+import type { AllowanceAndGoals, GroceryItem, IntegrationInfo, Meal, MealSlot } from '../../../shared/types.js';
 
 export interface NewGroceryItem {
   name: string;
@@ -34,5 +35,8 @@ export interface BudgetProvider {
   /** Remove every checked item (after a shopping trip). */
   clearCheckedGroceries(): Promise<void>;
 
-  getBudgetSummary(): Promise<BudgetSummary>;
+  getAllowanceAndGoals(): Promise<AllowanceAndGoals>;
+
+  /** Saved recipe names, offered as suggestions when planning a meal. */
+  getRecipeNames?(): Promise<string[]>;
 }

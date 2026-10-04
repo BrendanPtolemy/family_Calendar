@@ -241,7 +241,7 @@ textarea { resize: vertical; }
 .grocery.checked .grocery-name { text-decoration: line-through; color: var(--muted); }
 .grocery-name { flex: 1; font-size: 1.05rem; font-weight: 600; }
 
-/* ---------- Budget / settings ---------- */
+/* ---------- Allowance / settings ---------- */
 .locked { align-items: center; justify-content: center; text-align: center; font-size: 1.15rem; }
 .budget-grid, .settings-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 14px; align-items: start; }
 .settings-grid .card { display: flex; flex-direction: column; gap: 12px; }
@@ -253,6 +253,8 @@ textarea { resize: vertical; }
 .bar span.warn { background: var(--warn); }
 .bar span.over { background: var(--danger); }
 .bar.goal span { background: #9b5de5; }
+.list-row.static { cursor: default; }
+.next-pay { display: flex; flex-direction: column; align-items: flex-end; }
 .feed-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .feed-url { font-weight: 600; }
 

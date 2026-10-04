@@ -1,12 +1,12 @@
 import { useEffect, useState } from 'react';
-import type { Meal, MealSlot } from '../../shared/types';
+import type { IntegrationInfo, Meal, MealSlot } from '../../shared/types';
 import { del, get, post, put } from '../api';
 import { Modal } from '../components/Modal';
 import { addDays, fmt, fromKey, startOfWeek } from '../dates';
 import { useAction, useFamily } from '../family';
 
-const SLOTS: MealSlot[] = ['breakfast', 'lunch', 'dinner'];
-const SLOT_ICON: Record<MealSlot, string> = { breakfast: '🥞', lunch: '🥪', dinner: '🍲' };
+const SLOTS: MealSlot[] = ['breakfast', 'lunch', 'dinner', 'snack'];
+const SLOT_ICON: Record<MealSlot, string> = { breakfast: '🥞', lunch: '🥪', dinner: '🍲', snack: '🍎' };
 
 export function MealsView() {
   const { state, version, toast } = useFamily();
@@ -85,6 +85,12 @@ function MealEditor({ meal, date, slot, onClose, onSaved }: { meal?: Meal; date:
   const act = useAction();
   const [title, setTitle] = useState(meal?.title ?? '');
   const [ingredients, setIngredients] = useState((meal?.ingredients ?? []).join('\n'));
+  const [recipes, setRecipes] = useState<string[]>([]);
+  const [editable, setEditable] = useState(true);
+  useEffect(() => {
+    get<string[]>('/recipes').then(setRecipes).catch(() => {});
+    get<IntegrationInfo>('/integration').then((i) => setEditable(i.mealIngredientsEditable)).catch(() => {});
+  }, []);
   const save = async () => {
     const body = { date, slot, title, ingredients: ingredients.split(/[\n,]/).map((s) => s.trim()).filter(Boolean) };
     if (await act(() => (meal ? put(`/meals/${meal.id}`, body) : post('/meals', body)), 'Saved')) onSaved();
@@ -107,12 +113,25 @@ function MealEditor({ meal, date, slot, onClose, onSaved }: { meal?: Meal; date:
     >
       <label className="field">
         <span>Meal</span>
-        <input autoFocus value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Tacos" />
+        <input autoFocus list="recipe-names" value={title} onChange={(e) => setTitle(e.target.value)} placeholder={recipes.length ? 'Pick a recipe or type a meal' : 'Tacos'} />
+        <datalist id="recipe-names">
+          {recipes.map((r) => (
+            <option key={r} value={r} />
+          ))}
+        </datalist>
       </label>
-      <label className="field">
-        <span>Ingredients (one per line)</span>
-        <textarea rows={5} value={ingredients} onChange={(e) => setIngredients(e.target.value)} />
-      </label>
+      {editable ? (
+        <label className="field">
+          <span>Ingredients (one per line)</span>
+          <textarea rows={5} value={ingredients} onChange={(e) => setIngredients(e.target.value)} />
+        </label>
+      ) : (
+        <div className="field">
+          <span>Ingredients</span>
+          {meal?.ingredients.length ? <p className="muted">{meal.ingredients.join(', ')}</p> : null}
+          <small className="muted">Ingredients come from the recipe in the budget app. Pick a saved recipe name to bring them along.</small>
+        </div>
+      )}
     </Modal>
   );
 }

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { PinPad } from './components/PinPad';
 import { useFamily } from './family';
-import { BudgetView } from './views/Budget';
+import { AllowanceView } from './views/Allowance';
 import { CalendarView } from './views/Calendar';
 import { ChoresView } from './views/Chores';
 import { GroceriesView } from './views/Groceries';
@@ -17,7 +17,7 @@ const TABS = [
   { id: 'rewards', label: 'Rewards', icon: '⭐' },
   { id: 'meals', label: 'Meals', icon: '🍽️' },
   { id: 'groceries', label: 'Groceries', icon: '🛒' },
-  { id: 'budget', label: 'Budget', icon: '💰' },
+  { id: 'allowance', label: 'Allowance', icon: '🪙' },
   { id: 'settings', label: 'Settings', icon: '⚙️' },
 ] as const;
 
@@ -119,7 +119,7 @@ export function App() {
         {tab === 'rewards' && <RewardsView />}
         {tab === 'meals' && <MealsView />}
         {tab === 'groceries' && <GroceriesView />}
-        {tab === 'budget' && <BudgetView />}
+        {tab === 'allowance' && <AllowanceView />}
         {tab === 'settings' && <SettingsView />}
       </main>
       {pinPrompt.open && <PinPad />}

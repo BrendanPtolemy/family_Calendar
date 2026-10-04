@@ -4,14 +4,14 @@
 
 import type { Store } from '../../store.js';
 import { newId } from '../../store.js';
-import type { BudgetSummary, GroceryItem, Meal } from '../../../shared/types.js';
+import type { AllowanceAndGoals, GroceryItem, Meal } from '../../../shared/types.js';
 import type { BudgetProvider, MealInput, NewGroceryItem } from './types.js';
 
 export class SampleBudgetProvider implements BudgetProvider {
   constructor(private store: Store) {}
 
   async info() {
-    return { provider: 'sample', connected: true, readOnly: false, message: 'Showing sample data. Connect your budget app to see real numbers.' };
+    return { provider: 'sample', connected: true, readOnly: false, mealIngredientsEditable: true, message: 'Showing sample data. Connect your budget app to see real numbers.' };
   }
 
   async getMeals(from: string, to: string): Promise<Meal[]> {
@@ -76,21 +76,23 @@ export class SampleBudgetProvider implements BudgetProvider {
     });
   }
 
-  async getBudgetSummary(): Promise<BudgetSummary> {
-    const now = new Date();
+  async getAllowanceAndGoals(): Promise<AllowanceAndGoals> {
+    const next = (day: number) => {
+      const d = new Date();
+      if (d.getDate() >= day) d.setMonth(d.getMonth() + 1);
+      d.setDate(day);
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    };
     return {
-      period: now.toLocaleString('en-US', { month: 'long', year: 'numeric' }),
       currency: 'USD',
-      categories: [
-        { name: 'Groceries', budgeted: 900, spent: 612 },
-        { name: 'Dining out', budgeted: 250, spent: 198 },
-        { name: 'Kids activities', budgeted: 300, spent: 240 },
-        { name: 'Household', budgeted: 200, spent: 87 },
-        { name: 'Fun money', budgeted: 150, spent: 160 },
+      allowances: [
+        { name: "Ava's allowance", who: 'Ava', amount: 10, frequency: 'biweekly', nextDue: next(15) },
+        { name: "Leo's allowance", who: 'Leo', amount: 7.5, frequency: 'biweekly', nextDue: next(15) },
       ],
       goals: [
         { name: 'Summer vacation', target: 4000, saved: 2650 },
         { name: 'New bikes', target: 600, saved: 410 },
+        { name: 'LEGO set', who: 'Leo', target: 80, saved: 35 },
       ],
     };
   }
