@@ -455,11 +455,12 @@ export function createApp({ store, budget, feeds, now = () => new Date() }: AppD
 
   // ---- Meals, groceries, budget (via the budget integration) ----
   app.get('/api/integration', h(() => budget.info()));
+  app.get('/api/recipes', h(async () => (budget.getRecipeNames ? budget.getRecipeNames() : [])));
 
   app.get('/api/meals', h((req) => budget.getMeals(dateKey(req.query.from, 'from'), dateKey(req.query.to, 'to'))));
   const parseMeal = (b: Record<string, unknown>) => {
-    const slot = b.slot as 'breakfast' | 'lunch' | 'dinner';
-    if (!['breakfast', 'lunch', 'dinner'].includes(slot)) bad('Pick breakfast, lunch or dinner');
+    const slot = b.slot as 'breakfast' | 'lunch' | 'dinner' | 'snack';
+    if (!['breakfast', 'lunch', 'dinner', 'snack'].includes(slot)) bad('Pick breakfast, lunch, dinner or snack');
     const ingredients = Array.isArray(b.ingredients)
       ? b.ingredients.map((x) => str(x, 'Ingredient', { optional: true })).filter(Boolean)
       : [];
@@ -498,8 +499,8 @@ export function createApp({ store, budget, feeds, now = () => new Date() }: AppD
   app.delete('/api/groceries/:id', h((req) => budget.deleteGrocery(req.params.id as string)));
   app.post('/api/groceries/clear-checked', h(() => budget.clearCheckedGroceries()));
 
-  // Money stays behind the parent PIN.
-  app.get('/api/budget', requireParent, h(() => budget.getBudgetSummary()));
+  // Allowance and savings goals only; budget numbers never reach the display.
+  app.get('/api/allowance', h(() => budget.getAllowanceAndGoals()));
 
   app.use('/api', (_req, _res, next) => next(new HttpError(404, 'Not found')));
 

@@ -111,7 +111,7 @@ export interface TodayChore {
 
 // ---- Budget / groceries / meals (provided by the budget integration) ----
 
-export type MealSlot = 'breakfast' | 'lunch' | 'dinner';
+export type MealSlot = 'breakfast' | 'lunch' | 'dinner' | 'snack';
 
 export interface Meal {
   id: string;
@@ -131,18 +131,30 @@ export interface GroceryItem {
   addedBy?: string;
 }
 
-export interface BudgetCategory {
+// Only allowance and savings goals come across from the budget app.
+// Budget categories and spending deliberately stay out of the family display.
+
+export interface Allowance {
   name: string;
-  budgeted: number;
-  spent: number;
+  /** Family member's name as the budget app knows it. */
+  who?: string;
+  amount: number;
+  frequency: string; // weekly, biweekly, monthly…
+  nextDue?: string; // YYYY-MM-DD
 }
 
-export interface BudgetSummary {
-  period: string; // e.g. "October 2026"
+export interface SavingsGoal {
+  name: string;
+  who?: string;
+  target: number;
+  saved: number;
+  targetDate?: string;
+}
+
+export interface AllowanceAndGoals {
   currency: string;
-  categories: BudgetCategory[];
-  /** Optional family savings goals ("Disney trip"). */
-  goals: { name: string; target: number; saved: number }[];
+  allowances: Allowance[];
+  goals: SavingsGoal[];
 }
 
 export interface IntegrationInfo {
@@ -150,4 +162,6 @@ export interface IntegrationInfo {
   connected: boolean;
   readOnly: boolean;
   message?: string;
+  /** False when ingredients come from saved recipes rather than being typed per meal. */
+  mealIngredientsEditable: boolean;
 }

@@ -43,11 +43,9 @@ const kid = () => store.data.members.find((m) => m.role === 'kid')!;
 describe('parent PIN', () => {
   it('rejects a wrong PIN and guards parent-only routes', async () => {
     expect((await request(app).post('/api/parent/unlock').send({ pin: '0000' })).status).toBe(403);
-    expect((await request(app).get('/api/budget')).status).toBe(401);
+    expect((await request(app).get('/api/feeds/status')).status).toBe(401);
     const token = await unlock();
-    const res = await request(app).get('/api/budget').set('x-parent-token', token);
-    expect(res.status).toBe(200);
-    expect(res.body.categories.length).toBeGreaterThan(0);
+    expect((await request(app).get('/api/feeds/status').set('x-parent-token', token)).status).toBe(200);
   });
   it('can change the PIN', async () => {
     const token = await unlock();
@@ -123,6 +121,16 @@ describe('calendar', () => {
   it('validates events', async () => {
     const res = await request(app).post('/api/events').send({ title: '', start: 'x', end: 'y' });
     expect(res.status).toBe(400);
+  });
+});
+
+describe('allowance and savings goals', () => {
+  it('shows allowance and goals to everyone, and no budget numbers', async () => {
+    const res = await request(app).get('/api/allowance').expect(200);
+    expect(Object.keys(res.body).sort()).toEqual(['allowances', 'currency', 'goals']);
+    expect(res.body.allowances.length).toBeGreaterThan(0);
+    expect(res.body.goals.length).toBeGreaterThan(0);
+    expect((await request(app).get('/api/budget')).status).toBe(404);
   });
 });
 
