@@ -8,7 +8,7 @@ import type {
   Reward,
   TodayChore,
 } from '../shared/types';
-import { get, onParentRequired, post, setParentToken } from './api';
+import { get, onParentRequired, onUnpaired, post, setParentToken } from './api';
 
 export interface FamilyState {
   today: string;
@@ -28,6 +28,8 @@ export interface FamilyState {
 interface Ctx {
   state: FamilyState | null;
   error: string | null;
+  /** True when this device needs a pairing code before anything else works. */
+  unpaired: boolean;
   refresh: () => Promise<void>;
   /** Bumped after any change so views refetch their own data. */
   version: number;
@@ -49,6 +51,7 @@ const FamilyContext = createContext<Ctx | null>(null);
 export function FamilyProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<FamilyState | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [unpaired, setUnpaired] = useState(false);
   const [version, setVersion] = useState(0);
   const [pinPrompt, setPinPrompt] = useState<{ open: boolean; onDone?: () => void }>({ open: false });
   const [toastMsg, setToast] = useState<string | null>(null);
@@ -58,6 +61,7 @@ export function FamilyProvider({ children }: { children: ReactNode }) {
     try {
       const s = await get<FamilyState>('/state');
       setState(s);
+      setUnpaired(false);
       setError(null);
       setVersion((v) => v + 1);
     } catch (e) {
@@ -81,6 +85,10 @@ export function FamilyProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     onParentRequired(() => setState((s) => (s ? { ...s, parentUnlocked: false } : s)));
+    onUnpaired(() => {
+      setUnpaired(true);
+      setState(null);
+    });
   }, []);
 
   const toast = useCallback((msg: string) => {
@@ -94,6 +102,7 @@ export function FamilyProvider({ children }: { children: ReactNode }) {
     return {
       state,
       error,
+      unpaired,
       refresh,
       version,
       member: (id) => state?.members.find((m) => m.id === id),
@@ -118,7 +127,7 @@ export function FamilyProvider({ children }: { children: ReactNode }) {
       toast,
       toastMsg,
     };
-  }, [state, error, refresh, version, pinPrompt, toast, toastMsg]);
+  }, [state, error, unpaired, refresh, version, pinPrompt, toast, toastMsg]);
 
   return <FamilyContext.Provider value={value}>{children}</FamilyContext.Provider>;
 }

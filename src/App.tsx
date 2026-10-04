@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { PairScreen } from './components/PairScreen';
 import { PinPad } from './components/PinPad';
 import { useFamily } from './family';
 import { BudgetView } from './views/Budget';
@@ -41,7 +42,7 @@ function Clock() {
 }
 
 export function App() {
-  const { state, error, pinPrompt, toastMsg, isParent, lock, refresh } = useFamily();
+  const { state, error, unpaired, pinPrompt, toastMsg, isParent, lock, refresh } = useFamily();
   const [tab, setTab] = useState<Tab>(() => {
     const h = location.hash.slice(1);
     return (TABS.some((t) => t.id === h) ? h : 'today') as Tab;
@@ -79,6 +80,8 @@ export function App() {
     }, 60_000);
     return () => window.clearInterval(t);
   }, [state, refresh]);
+
+  if (unpaired) return <PairScreen />;
 
   if (!state) {
     return <div className="loading">{error ? `Can't reach the family server: ${error}` : 'Loading…'}</div>;

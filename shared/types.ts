@@ -12,6 +12,24 @@ export interface Member {
   calendarFeeds: string[];
 }
 
+/** A paired phone/tablet/browser. The token itself is never stored, only its hash. */
+export interface Device {
+  id: string;
+  name: string;
+  tokenHash: string;
+  createdAt: string;
+  lastSeenAt: string;
+}
+
+/** What Settings › Devices shows (no hash). */
+export interface DeviceInfo {
+  id: string;
+  name: string;
+  createdAt: string;
+  lastSeenAt: string;
+  current: boolean;
+}
+
 export type Recurrence = 'none' | 'daily' | 'weekly' | 'monthly';
 
 export interface CalendarEvent {

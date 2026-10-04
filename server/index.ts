@@ -1,7 +1,8 @@
 import express from 'express';
 import { existsSync, readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { dirname, resolve } from 'node:path';
 import { createApp } from './app.js';
+import { DeviceAuth } from './devices.js';
 import { FeedService } from './feeds.js';
 import { createBudgetProvider } from './integrations/budget/index.js';
 import { Store } from './store.js';
@@ -15,10 +16,13 @@ if (existsSync('.env')) {
 }
 
 const port = Number(process.env.PORT ?? 8787);
-const store = new Store(resolve(process.env.DATA_FILE ?? './data/family.json'));
+const dataFile = resolve(process.env.DATA_FILE ?? './data/family.json');
+const store = new Store(dataFile);
 const budget = createBudgetProvider(store);
 const feeds = new FeedService(Number(process.env.CALENDAR_REFRESH_MINUTES ?? 15) * 60_000);
-const app = createApp({ store, budget, feeds });
+const devices = new DeviceAuth(store, resolve(dirname(dataFile), 'pairing-codes.json'), process.env.HTTPS === 'true');
+const trustProxy = (process.env.TRUST_PROXY ?? 'loopback').split(',').map((s) => s.trim()).filter(Boolean);
+const app = createApp({ store, budget, feeds, devices, trustProxy });
 
 const dist = resolve('dist');
 if (process.env.NODE_ENV === 'production' && existsSync(dist)) {
@@ -28,6 +32,7 @@ if (process.env.NODE_ENV === 'production' && existsSync(dist)) {
 
 app.listen(port, () => {
   console.log(`Family Skylight API on http://localhost:${port}`);
+  if (store.data.devices.length === 0) console.log('No devices paired yet. Run `npm run pair` on this machine to get a code.');
   const feedUrls = store.data.members.flatMap((m) => m.calendarFeeds);
   void feeds.refresh(feedUrls);
 });

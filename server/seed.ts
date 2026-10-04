@@ -141,6 +141,7 @@ export function buildSeed(now: Date): Data {
     rewards,
     redemptions: [],
     screenUses: [],
+    devices: [],
     sample: { meals, groceries },
   };
 }

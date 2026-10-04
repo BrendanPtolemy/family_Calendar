@@ -277,3 +277,10 @@ textarea { resize: vertical; }
   .row { flex-wrap: wrap; }
   .meal-grid { grid-template-columns: 84px repeat(7, 120px); }
 }
+
+/* Pairing (unconnected device) */
+.pair-screen { display: grid; place-items: center; min-height: 100%; padding: 16px; }
+.pair-card { width: 100%; max-width: 420px; display: flex; flex-direction: column; gap: 14px; text-align: center; }
+.pair-card .field { text-align: left; }
+.pair-code { font-size: 1.6rem; letter-spacing: 0.15em; text-align: center; font-family: ui-monospace, Menlo, monospace; }
+.device-code { font-size: 2rem; letter-spacing: 0.15em; font-family: ui-monospace, Menlo, monospace; text-align: center; margin: 8px 0; }

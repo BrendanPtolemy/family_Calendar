@@ -6,6 +6,7 @@ import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from '
 import { dirname } from 'node:path';
 import type {
   CalendarEvent,
+  Device,
   Chore,
   ChoreCompletion,
   GroceryItem,
@@ -36,6 +37,8 @@ export interface Data {
   rewards: Reward[];
   redemptions: Redemption[];
   screenUses: ScreenTimeUse[];
+  /** Paired devices (see server/devices.ts). */
+  devices: Device[];
   /** Used only by the sample budget provider. */
   sample: { meals: Meal[]; groceries: GroceryItem[] };
 }
@@ -58,6 +61,8 @@ export class Store {
   constructor(private file: string | null) {
     if (file && existsSync(file)) {
       this.data = JSON.parse(readFileSync(file, 'utf8')) as Data;
+      // Files written before device pairing existed.
+      this.data.devices ??= [];
     } else {
       this.data = buildSeed(new Date());
       this.flush();

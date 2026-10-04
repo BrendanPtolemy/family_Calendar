@@ -4,10 +4,14 @@ import type {
   CalendarEvent,
   Chore,
   ChoreSchedule,
+  Device,
+  DeviceInfo,
   Member,
   Reward,
   TodayChore,
 } from '../shared/types.js';
+import { DEVICE_COOKIE, DeviceAuth } from './devices.js';
+import { Limiter, waitMessage } from './limiter.js';
 import {
   addDays,
   computeBalance,
@@ -27,7 +31,7 @@ const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const HEX_RE = /^#[0-9a-fA-F]{6}$/;
 
 class HttpError extends Error {
-  constructor(public status: number, message: string) {
+  constructor(public status: number, message: string, public code?: string) {
     super(message);
   }
 }
@@ -82,49 +86,90 @@ export interface AppDeps {
   budget: BudgetProvider;
   feeds: FeedService;
   now?: () => Date;
+  /** Device pairing; defaults to in-memory codes only (no `npm run pair` file). */
+  devices?: DeviceAuth;
+  /** Express "trust proxy" value: which proxies' X-Forwarded-For to believe. */
+  trustProxy?: string[];
 }
 
-export function createApp({ store, budget, feeds, now = () => new Date() }: AppDeps) {
+export function createApp({ store, budget, feeds, now = () => new Date(), devices = new DeviceAuth(store, null, false), trustProxy = ['loopback'] }: AppDeps) {
   const app = express();
+  app.set('trust proxy', trustProxy);
   app.use(express.json({ limit: '256kb' }));
 
-  // ---- Parent unlock (PIN -> short-lived token) ----
-  const sessions = new Map<string, number>();
-  const failures = { count: 0, until: 0 };
+  // ---- Device pairing: the front door ----
+  const pairPerIp = new Limiter(10, 15 * 60_000, 15 * 60_000);
+  const pairGlobal = new Limiter(30, 60 * 60_000, 60 * 60_000);
+  const deviceOf = (res: Response) => res.locals.device as Device;
 
-  const isParent = (req: Request) => {
+  app.get('/api/session', (req, res) => {
+    const device = devices.identify(req);
+    res.json({ paired: !!device, deviceName: device?.name });
+  });
+
+  app.post(
+    '/api/pair',
+    h((req, res) => {
+      const ipKey = `ip:${req.ip}`;
+      const wait = Math.max(pairPerIp.retryAfter(ipKey), pairGlobal.retryAfter('all'));
+      if (wait) throw new HttpError(429, waitMessage(wait));
+      const code = str(req.body?.code, 'Code', { max: 20 });
+      const name = str(req.body?.name, 'Device name', { optional: true, max: 40 });
+      const paired = devices.pair(code, name);
+      if (!paired) {
+        pairPerIp.fail(ipKey);
+        pairGlobal.fail('all');
+        throw new HttpError(403, "That code didn't work. Codes expire after 15 minutes and work once.");
+      }
+      pairPerIp.reset(ipKey);
+      res.cookie(DEVICE_COOKIE, paired.token, devices.cookieOptions());
+      return { ok: true, deviceName: paired.device.name };
+    }),
+  );
+
+  // Everything else under /api needs a paired device.
+  app.use('/api', (req, res, next) => {
+    const device = devices.identify(req);
+    if (!device) return next(new HttpError(401, 'This device is not paired with the family calendar.', 'pair'));
+    res.locals.device = device;
+    next();
+  });
+
+  // ---- Parent unlock (PIN -> short-lived token, valid only on the device that entered it) ----
+  const sessions = new Map<string, { expiresAt: number; deviceId: string }>();
+  const pinLimiter = new Limiter(5, 15 * 60_000, 60_000);
+
+  const isParent = (req: Request, res: Response) => {
     const token = req.header('x-parent-token');
     if (!token) return false;
-    const exp = sessions.get(token);
-    if (!exp || exp < Date.now()) {
+    const s = sessions.get(token);
+    if (!s || s.expiresAt < Date.now()) {
       sessions.delete(token);
       return false;
     }
-    return true;
+    return s.deviceId === deviceOf(res)?.id;
   };
-  const requireParent = (req: Request, _res: Response, next: NextFunction) => {
-    if (!isParent(req)) return next(new HttpError(401, 'Parent PIN required'));
+  const requireParent = (req: Request, res: Response, next: NextFunction) => {
+    if (!isParent(req, res)) return next(new HttpError(401, 'Parent PIN required'));
     next();
   };
 
   app.post(
     '/api/parent/unlock',
-    h((req) => {
-      if (Date.now() < failures.until) throw new HttpError(429, 'Too many tries. Wait a minute and try again.');
+    h((req, res) => {
+      const key = deviceOf(res).id;
+      const wait = pinLimiter.retryAfter(key);
+      if (wait) throw new HttpError(429, waitMessage(wait));
       const pin = str(req.body?.pin, 'PIN', { max: 12 });
       const s = store.data.settings;
       if (hashPin(pin, s.pinSalt) !== s.pinHash) {
-        failures.count++;
-        if (failures.count >= 5) {
-          failures.until = Date.now() + 60_000;
-          failures.count = 0;
-        }
+        pinLimiter.fail(key);
         throw new HttpError(403, 'Wrong PIN');
       }
-      failures.count = 0;
+      pinLimiter.reset(key);
       const token = randomBytes(24).toString('hex');
       const expiresAt = Date.now() + PARENT_SESSION_MS;
-      sessions.set(token, expiresAt);
+      sessions.set(token, { expiresAt, deviceId: key });
       return { token, expiresAt: new Date(expiresAt).toISOString() };
     }),
   );
@@ -137,10 +182,25 @@ export function createApp({ store, budget, feeds, now = () => new Date() }: AppD
   );
 
   // ---- Family state: everything the home screen needs in one call ----
+  // ---- Devices (parents manage them) ----
+  app.get('/api/devices', requireParent, h((_req, res) => store.data.devices.map((d): DeviceInfo => ({
+    id: d.id, name: d.name, createdAt: d.createdAt, lastSeenAt: d.lastSeenAt, current: d.id === deviceOf(res).id,
+  }))));
+  app.post('/api/devices/pair-code', requireParent, h((req) => {
+    if (store.data.settings.pinIsDefault) bad('Change the parent PIN from 1234 before adding devices.');
+    return devices.createCode(str(req.body?.name, 'Device name', { optional: true, max: 40 }));
+  }));
+  app.delete('/api/devices/:id', requireParent, h((req, res) => {
+    const id = req.params.id as string;
+    if (!devices.remove(id)) throw new HttpError(404, 'Device not found');
+    if (id === deviceOf(res).id) res.clearCookie(DEVICE_COOKIE, { path: '/' });
+  }));
+
   app.get(
     '/api/state',
-    h((req) => {
+    h((req, res) => {
       const d = store.data;
+      const parent = isParent(req, res);
       const today = typeof req.query.date === 'string' && DATE_RE.test(req.query.date) ? req.query.date : toDateKey(now());
       const todayChores: TodayChore[] = [];
       for (const chore of d.chores) {
@@ -157,8 +217,10 @@ export function createApp({ store, budget, feeds, now = () => new Date() }: AppD
           pinIsDefault: d.settings.pinIsDefault,
           weekStartsOn: d.settings.weekStartsOn,
         },
-        parentUnlocked: isParent(req),
-        members: d.members,
+        parentUnlocked: parent,
+        // iCal links are secret addresses (anyone holding one can read that
+        // calendar), so only parent mode sees them.
+        members: parent ? d.members : d.members.map((m) => ({ ...m, calendarFeeds: m.calendarFeeds.map(() => '') })),
         chores: d.chores.filter((c) => !c.archived),
         rewards: d.rewards.filter((r) => !r.archived),
         todayChores,
@@ -246,12 +308,14 @@ export function createApp({ store, budget, feeds, now = () => new Date() }: AppD
   // ---- Chores ----
   app.post(
     '/api/chores/:id/complete',
-    h((req) => store.update((d) => {
+    h((req, res) => store.update((d) => {
       const chore = find(d.chores, req.params.id as string, 'Chore');
       const memberId = str(req.body?.memberId, 'memberId');
       const date = req.body?.date ? dateKey(req.body.date, 'date') : toDateKey(now());
       if (!chore.assigneeIds.includes(memberId)) bad('That chore is not assigned to this person');
       if (date > toDateKey(now())) bad("Can't complete a chore in the future");
+      // Kids can catch up on yesterday; anything older needs a parent.
+      if (date < addDays(toDateKey(now()), -1) && !isParent(req, res)) throw new HttpError(401, 'Parent PIN required');
       const existing = d.completions.find((c) => c.choreId === chore.id && c.memberId === memberId && c.date === date);
       if (existing) return existing;
       const completion = {
@@ -269,13 +333,13 @@ export function createApp({ store, budget, feeds, now = () => new Date() }: AppD
   );
   app.post(
     '/api/chores/:id/undo',
-    h((req) => store.update((d) => {
+    h((req, res) => store.update((d) => {
       const memberId = str(req.body?.memberId, 'memberId');
       const date = req.body?.date ? dateKey(req.body.date, 'date') : toDateKey(now());
       const c = d.completions.find((x) => x.choreId === req.params.id && x.memberId === memberId && x.date === date);
       if (!c) return;
       // Kids can undo a tap by mistake; once a parent approved it, only a parent can.
-      if (c.status === 'approved' && d.chores.find((x) => x.id === c.choreId)?.needsApproval && !isParent(req)) {
+      if (c.status === 'approved' && d.chores.find((x) => x.id === c.choreId)?.needsApproval && !isParent(req, res)) {
         throw new HttpError(401, 'Parent PIN required');
       }
       d.completions = d.completions.filter((x) => x.id !== c.id);
@@ -331,7 +395,7 @@ export function createApp({ store, budget, feeds, now = () => new Date() }: AppD
   // ---- Rewards ----
   app.post(
     '/api/rewards/:id/redeem',
-    h((req) => store.update((d) => {
+    h((req, res) => store.update((d) => {
       const reward = find(d.rewards, req.params.id as string, 'Reward');
       if (reward.archived) bad('That reward is no longer available');
       const memberId = str(req.body?.memberId, 'memberId');
@@ -345,7 +409,7 @@ export function createApp({ store, budget, feeds, now = () => new Date() }: AppD
         cost: reward.cost,
         screenMinutes: reward.kind === 'screen_time' ? reward.screenMinutes ?? 0 : 0,
         // A parent redeeming on a kid's behalf counts as approval.
-        status: isParent(req) ? ('approved' as const) : ('requested' as const),
+        status: isParent(req, res) ? ('approved' as const) : ('requested' as const),
         at: now().toISOString(),
       };
       d.redemptions.push(redemption);
@@ -506,7 +570,8 @@ export function createApp({ store, budget, feeds, now = () => new Date() }: AppD
   app.use((err: Error & { status?: number }, _req: Request, res: Response, _next: NextFunction) => {
     const status = err instanceof HttpError ? err.status : err.status ?? 500;
     if (status >= 500) console.error(err);
-    res.status(status).json({ error: status >= 500 && !(err instanceof HttpError) && !err.status ? 'Something went wrong' : err.message });
+    const message = status >= 500 && !(err instanceof HttpError) && !err.status ? 'Something went wrong' : err.message;
+    res.status(status).json({ error: message, ...(err instanceof HttpError && err.code ? { code: err.code } : {}) });
   });
 
   return app;

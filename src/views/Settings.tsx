@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import type { Member } from '../../shared/types';
+import type { DeviceInfo, Member } from '../../shared/types';
 import { del, get, post, put } from '../api';
 import { Avatar } from '../components/Avatar';
 import { Modal } from '../components/Modal';
@@ -23,10 +23,23 @@ export function SettingsView() {
   const [pin, setPin] = useState('');
   const [editing, setEditing] = useState<Member | 'new' | null>(null);
   const [feeds, setFeeds] = useState<FeedStatus[]>([]);
+  const [devices, setDevices] = useState<DeviceInfo[]>([]);
+  const [newCode, setNewCode] = useState<{ code: string; expiresAt: string } | null>(null);
+  const [newDeviceName, setNewDeviceName] = useState('');
 
   useEffect(() => {
     if (isParent) get<FeedStatus[]>('/feeds/status').then(setFeeds).catch(() => {});
+    if (isParent) get<DeviceInfo[]>('/devices').then(setDevices).catch(() => {});
   }, [isParent, state]);
+
+  const removeDevice = async (d: DeviceInfo) => {
+    const msg = d.current
+      ? 'Disconnect THIS device? You will need a new pairing code to use it again.'
+      : `Disconnect "${d.name}"? It will need a new pairing code to get back in.`;
+    if (!confirm(msg)) return;
+    await act(() => del(`/devices/${d.id}`), 'Disconnected');
+    get<DeviceInfo[]>('/devices').then(setDevices).catch(() => {});
+  };
 
   if (!isParent) {
     return (
@@ -88,6 +101,38 @@ export function SettingsView() {
               Change PIN
             </button>
           </div>
+        </section>
+
+        <section className="card">
+          <h3>Devices</h3>
+          <p className="muted small">Phones, tablets and computers that can open the family calendar.</p>
+          <div className="list">
+            {devices.map((d) => (
+              <div key={d.id} className="list-row">
+                <span className="list-main">
+                  <strong>{d.name}{d.current ? ' (this device)' : ''}</strong>
+                  <span className="muted">Added {new Date(d.createdAt).toLocaleDateString()} · last used {new Date(d.lastSeenAt).toLocaleDateString()}</span>
+                </span>
+                <button className="btn danger" onClick={() => removeDevice(d)}>Disconnect</button>
+              </div>
+            ))}
+          </div>
+          {newCode ? (
+            <div>
+              <p>Enter this code on the new device:</p>
+              <p className="device-code">{newCode.code}</p>
+              <p className="muted small">Works once, until {new Date(newCode.expiresAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}.</p>
+              <button className="btn" onClick={() => { setNewCode(null); get<DeviceInfo[]>('/devices').then(setDevices).catch(() => {}); }}>Done</button>
+            </div>
+          ) : (
+            <div className="row">
+              <input placeholder="Name (e.g. Mom's phone)" value={newDeviceName} maxLength={40} onChange={(e) => setNewDeviceName(e.target.value)} />
+              <button className="btn" onClick={async () => {
+                const r = await act(() => post<{ code: string; expiresAt: string }>('/devices/pair-code', { name: newDeviceName.trim() }));
+                if (r) { setNewCode(r); setNewDeviceName(''); }
+              }}>＋ Add a device</button>
+            </div>
+          )}
         </section>
 
         {feeds.length > 0 && (

@@ -30,15 +30,34 @@ npm start            # serves the app and API on http://<this-computer>:8787
 
 Open that address on the tablet and "Add to Home Screen" so it runs full-screen. A small always-on box (a Raspberry Pi, an old laptop, a NAS) works well as the server. Data lives in `data/family.json`; back that file up.
 
-This is meant for your home network. Don't expose it to the internet without putting real authentication in front of it.
-
 Configuration is in `.env` (see `.env.example`).
+
+## Devices and access
+
+Nothing works until a device is paired, so the app is safe to reach from the internet (behind HTTPS).
+
+- **First device:** on the server, run `npm run pair -- "Kitchen tablet"`. It prints a code like `ABCD-EFGH`. Open the calendar on the tablet and enter the code. Codes work once and expire after 15 minutes.
+- **Every other device:** on a paired device, unlock parent mode, then go to Settings › Devices › Add a device. You have to change the parent PIN from 1234 first.
+- **Lost phone:** Settings › Devices › Disconnect. It loses access straight away.
+- **Parent mode** (the PIN) sits on top of pairing. An unlock only counts on the device where the PIN was typed. Wrong PINs lock that device out for longer each time.
+- Each paired device holds an httpOnly cookie that lasts 400 days. The server stores only a hash of it.
 
 ## Connecting the family budget app
 
 Meals, groceries and budget numbers come through one interface, `BudgetProvider` in `server/integrations/budget/types.ts`. Until the real budget app is connected, `BUDGET_PROVIDER=sample` serves demo data so everything works.
 
-To connect the budget app, set `BUDGET_PROVIDER=http`, `BUDGET_API_URL` and `BUDGET_API_KEY`. `server/integrations/budget/http.ts` holds the endpoint paths and field mappings; they are placeholders until we match them to the budget app's real API, and that file is the only one that should need to change.
+To connect the family budget app (`family-saas`):
+
+1. In family-saas, run `node scripts/calendar-token.js --slug=<family>`. It prints a token once and keeps only its hash.
+2. Here, set `BUDGET_PROVIDER=http`, `BUDGET_API_URL` (e.g. `http://127.0.0.1:3010`), `BUDGET_TENANT=<family>` and `BUDGET_API_KEY=<token>`.
+
+The calendar calls the budget app's `/api/calendar/*` service API (`backend/routes/calendar.js` there):
+- Meals map onto its two-week meal plans.
+- Groceries go to its newest open list.
+- The Budget tab shows this month's categories and savings goals.
+- "Connected" in the app means the token was accepted, not just that the server answered.
+
+Running the token script again replaces the token; `--revoke` removes it.
 
 ## Development
 

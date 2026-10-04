@@ -21,6 +21,12 @@ export function onParentRequired(fn: () => void) {
   onParentExpired = fn;
 }
 
+let onDeviceUnpaired: () => void = () => {};
+/** Called when the server says this device isn't (or is no longer) paired. */
+export function onUnpaired(fn: () => void) {
+  onDeviceUnpaired = fn;
+}
+
 export async function api<T = unknown>(method: string, path: string, body?: unknown): Promise<T> {
   const headers: Record<string, string> = { Accept: 'application/json' };
   if (body !== undefined) headers['Content-Type'] = 'application/json';
@@ -28,7 +34,10 @@ export async function api<T = unknown>(method: string, path: string, body?: unkn
   const res = await fetch(`/api${path}`, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
-    if (res.status === 401) {
+    if (res.status === 401 && data.code === 'pair') {
+      setParentToken(null);
+      onDeviceUnpaired();
+    } else if (res.status === 401) {
       setParentToken(null);
       onParentExpired();
     }
