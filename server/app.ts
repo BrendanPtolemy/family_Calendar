@@ -92,7 +92,7 @@ export interface AppDeps {
   trustProxy?: string[];
 }
 
-export function createApp({ store, budget, feeds, now = () => new Date(), devices = new DeviceAuth(store, null, false), trustProxy = ['loopback'] }: AppDeps) {
+export function createApp({ store, budget, feeds, now = () => new Date(), devices = new DeviceAuth(store, null), trustProxy = ['loopback'] }: AppDeps) {
   const app = express();
   app.set('trust proxy', trustProxy);
   app.use(express.json({ limit: '256kb' }));
@@ -122,7 +122,7 @@ export function createApp({ store, budget, feeds, now = () => new Date(), device
         throw new HttpError(403, "That code didn't work. Codes expire after 15 minutes and work once.");
       }
       pairPerIp.reset(ipKey);
-      res.cookie(DEVICE_COOKIE, paired.token, devices.cookieOptions());
+      res.cookie(DEVICE_COOKIE, paired.token, devices.cookieOptions(req));
       return { ok: true, deviceName: paired.device.name };
     }),
   );

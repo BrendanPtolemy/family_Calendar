@@ -34,7 +34,7 @@ beforeEach(async () => {
   store = new Store(null);
   const ical = (await import('node-ical')).default;
   const feeds = new FeedService(60_000, async () => ical.sync.parseICS(ICS));
-  devices = new DeviceAuth(store, null, false);
+  devices = new DeviceAuth(store, null);
   app = createApp({ store, budget: new SampleBudgetProvider(store), feeds, now, devices });
   agent = request.agent(app);
   await agent.post('/api/pair').send({ code: devices.createCode('Test tablet').code }).expect(200);

@@ -20,7 +20,7 @@ const dataFile = resolve(process.env.DATA_FILE ?? './data/family.json');
 const store = new Store(dataFile);
 const budget = createBudgetProvider(store);
 const feeds = new FeedService(Number(process.env.CALENDAR_REFRESH_MINUTES ?? 15) * 60_000);
-const devices = new DeviceAuth(store, resolve(dirname(dataFile), 'pairing-codes.json'), process.env.HTTPS === 'true');
+const devices = new DeviceAuth(store, resolve(dirname(dataFile), 'pairing-codes.json'));
 const trustProxy = (process.env.TRUST_PROXY ?? 'loopback').split(',').map((s) => s.trim()).filter(Boolean);
 const app = createApp({ store, budget, feeds, devices, trustProxy });
 

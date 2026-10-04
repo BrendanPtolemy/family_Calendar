@@ -73,11 +73,12 @@ export class DeviceAuth {
   constructor(
     private store: Store,
     private codeFile: string | null,
-    private secureCookies: boolean,
   ) {}
 
-  cookieOptions() {
-    return { httpOnly: true, sameSite: 'strict' as const, secure: this.secureCookies, maxAge: COOKIE_MAX_AGE_MS, path: '/' };
+  /** Secure only when this request really came over HTTPS (directly or via a trusted proxy);
+   *  a Secure cookie set over plain HTTP on the home LAN would just be dropped. */
+  cookieOptions(req: Request) {
+    return { httpOnly: true, sameSite: 'strict' as const, secure: req.secure, maxAge: COOKIE_MAX_AGE_MS, path: '/' };
   }
 
   /** A parent on a paired device asks for a code to let another device in. */

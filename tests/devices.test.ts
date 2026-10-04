@@ -18,7 +18,7 @@ const now = () => new Date(2026, 9, 5, 12); // Mon Oct 5 2026
 beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), 'cal-devices-'));
   store = new Store(null);
-  devices = new DeviceAuth(store, join(dir, 'pairing-codes.json'), false);
+  devices = new DeviceAuth(store, join(dir, 'pairing-codes.json'));
   app = createApp({ store, budget: new SampleBudgetProvider(store), feeds: new FeedService(60_000, async () => ({})), now, devices });
 });
 afterEach(() => rmSync(dir, { recursive: true, force: true }));
@@ -139,3 +139,14 @@ describe('parent mode on top of pairing', () => {
     await a.post(`/api/chores/${daily.id}/complete`).set('x-parent-token', token).send({ memberId: kid.id, date: '2026-09-01' }).expect(200);
   });
 });
+
+describe('device cookie', () => {
+  it('is Secure only when the request came over HTTPS through a trusted proxy', async () => {
+    const plain = await request(app).post('/api/pair').send({ code: devices.createCode('A').code });
+    expect(String(plain.headers['set-cookie'])).not.toMatch(/Secure/i);
+    const tls = await request(app).post('/api/pair').set('X-Forwarded-Proto', 'https').send({ code: devices.createCode('B').code });
+    expect(String(tls.headers['set-cookie'])).toMatch(/Secure/i);
+    expect(String(tls.headers['set-cookie'])).toMatch(/HttpOnly/i);
+  });
+});
+
